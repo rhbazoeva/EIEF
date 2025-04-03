@@ -1,0 +1,147 @@
+---
+title: "PS1_EX2"
+author: "Gabriele Licata, Aleksandr Vedishchev, Cristine Bazoeva"
+date: "2025-03-30"
+output:
+  html_document:
+    df_print: paged
+---
+
+###Libraries, workinkg directory, data reading
+
+```{r, message = FALSE}
+library(dplyr)
+library(ggplot2)
+
+setwd("C:/Users/Gabriele/Desktop/EM_PS1_EX2/") 
+
+FRED_data <- read.csv('CPIAUCSL.csv') %>%
+  mutate(
+    observation_date = as.Date(observation_date, format = "%Y-%m-%d"),
+    CPIAUCSL = as.numeric(CPIAUCSL),
+    y = 100 * c(NA, diff(log(CPIAUCSL)))) %>%
+  filter(observation_date >= "1968-01-01")
+
+```
+
+###Plot the time series, its sample ACF and partial ACF
+
+```{r}
+
+#CPI
+ggplot(FRED_data, aes(x = observation_date, y = CPIAUCSL, group = 1)) +
+  geom_line(linewidth = 1, color="#03bfc4") +
+  labs(title = "CPIAUCSL Data", x = "Date", y = "CPI") +
+  scale_x_date(date_breaks = "5 years", expand = c(0, 0) , date_labels = "%Y") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+#ggsave(plot = last_plot(), filename = "CPI.png")
+
+
+#IR
+ggplot(FRED_data, aes(x = observation_date, y = y, group = 1)) +
+  geom_line(linewidth = 1, color="#03bfc4") +
+  labs(title = "Monthly Inflation Rate Time Series", x = "Date", y = "Inflation Rate") +
+  scale_x_date(date_breaks = "5 years", expand = c(0, 0) , date_labels = "%Y") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+#ggsave(plot = last_plot(), filename = "IR.png")
+
+
+#ACF
+#png("ACF.png", width = 800, height = 600, res = 150)
+acf(FRED_data$y, main = "Autocorrelation Function", col = "#03bfc4",  lwd = 2, ci.col = "red")
+#dev.off()
+
+#PACF
+#png("PACF.png", width = 800, height = 600, res = 150)
+pacf(FRED_data$y, main = "Partial Autocorrelation Function", col = "#03bfc4", lwd = 2, ci.col = "red")
+#dev.off()
+
+```
+###Forecast, MSFE, MAFE, MFE, VAR
+```{r}
+forecast_indices <- which(FRED_data$observation_date >= "1970-01-01")
+
+msfe <- numeric(24)
+mfe <- numeric(24)
+mafe <- numeric(24)
+pred_err_var <- numeric(24)
+
+for (r in 1:24) {
+  forecasts <- c()
+  errors <- c()
+  for (t in forecast_indices) {
+      yt_hat <- mean(FRED_data$y[(t - r):(t - 1)])
+      forecasts <- c(forecasts, yt_hat)
+      errors <- c(errors, (FRED_data$y[t] - yt_hat))
+  }
+  msfe[r] <- mean(errors^2)  # Mean Squared Forecast Error
+  mfe[r] <- mean(errors)  # Mean Forecast Error (bias)
+  mafe[r] <- mean(abs(errors))  # Mean Absolute Forecast Error
+  pred_err_var[r] <- var(forecasts) #Prediction Error Variance
+}
+
+results <- data.frame(r = 1:24, msfe, mafe, mfe, pred_err_var)
+
+best_r_msfe <- which.min(msfe)
+cat("The optimal value of r (MSFE) is:", best_r_msfe, "\n")
+
+best_r_mafe <- which.min(mafe)
+cat("The optimal value of r (MAFE) is:", best_r_mafe, "\n")
+
+```
+
+###Plots
+```{r}
+#MSFE
+ggplot(results, aes(x = r, y = msfe)) +
+  geom_point(color = "#03bfc4") +
+  labs(title = "Mean Squared Forecast Error", x = "r", y = "MSFE") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+
+#ggsave(plot = last_plot(), filename = "MSFE.png")
+
+#MAFE
+ggplot(results, aes(x = r, y = mafe)) +
+  geom_point(color = "#03bfc4") +
+  labs(title = "Mean Absolute Forecast Error", x = "r", y = "MAFE") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+
+#ggsave(plot = last_plot(), filename = "MAFE.png")
+
+#MFE
+ggplot(results, aes(x = r, y = mfe)) +
+  geom_point(color = "#03bfc4") +
+  labs(title = "Mean Forecast Error", x = "r", y = "MFE") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+
+#ggsave(plot = last_plot(), filename = "MFE.png")
+
+#Prediction Error Variance
+ggplot(results, aes(x = r, y = pred_err_var)) +
+  geom_point(color = "#03bfc4") +
+  labs(title = "Prediction Error Variance", x = "r", y = "Var") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(face = "bold", size = 18, hjust = 0.5)
+  )
+#ggsave(plot = last_plot(), filename = "VAR.png")
+```
+#Final comments
+Both the Mean Squared Forecast Error (MSFE = 0.0686) and the Mean Absolute Forecast Error (MAFE = 0.1821) are minimized when r = 11, indicating that this window size provides the most accurate forecasts among the tested values. This suggests the result's robustness to the choice of loss function, in this case. 
+
+As the window size (r) increases, the forecast bias becomes more negative, indicating that larger windows tend to overprotect the inflation rate.  On the other hand, the prediction error variance decreases, indicating that forecasts become more consistent (less dispersed) when using larger windows. The optimal window size balances this tradeoff, minimizing overall forecast errors.
